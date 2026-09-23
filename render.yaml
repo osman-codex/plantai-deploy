@@ -2,6 +2,12 @@ services:
   # PlantGuard AI backend: FastAPI + real model inference (CPU).
   # The model file (~16MB) lives in models/ and is committed to the repo,
   # so no external storage is needed.
+  #
+  # Deploy: Render Dashboard -> New + -> Blueprint -> pick this repo.
+  # The service name below determines the public URL:
+  #   https://plantguard-backend.onrender.com   (what the frontend expects)
+  # If Render renames the service (e.g. plantguard-backend-abcd), set
+  # VITE_API_URL on the Vercel project to the actual URL and redeploy.
   - type: web
     name: plantguard-backend
     runtime: python
@@ -18,9 +24,14 @@ services:
         value: sqlite:////tmp/plantguard.db
       - key: DATA_DIR
         value: /tmp/plantguard_data
+      - key: UPLOAD_DIR
+        value: /tmp/plantguard_uploads
       - key: CONFIDENCE_THRESHOLD
         value: "0.55"
       - key: TOP_K
         value: "3"
+      # Comma-separated list of allowed browser origins, or "*" for any.
+      # Tighten this to your Vercel URL after the first deploy, e.g.
+      # https://plantguard-ai.vercel.app
       - key: CORS_ORIGINS
         value: "*"

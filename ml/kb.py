@@ -6,6 +6,382 @@ no severity annotations exist in the training data.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+
+
+@dataclass(frozen=True)
+class CarePlan:
+    """Structured, class-specific guidance distilled from plant-protection
+    reference literature (extension-service style recommendations)."""
+
+    actions: list[str] = field(default_factory=list)
+    products: list[str] = field(default_factory=list)   # pesticide/fungicide options
+    nutrition: list[str] = field(default_factory=list)  # fertilizer / soil amendment
+    prevention: list[str] = field(default_factory=list)
+
+
+# Healthy crops get a general maintenance plan rather than "no treatment needed".
+HEALTHY_PLAN = CarePlan(
+    actions=[
+        "No disease treatment needed — keep monitoring weekly.",
+        "Water at the base in the morning; avoid wetting foliage.",
+        "Remove fallen leaves and debris to deny pathogens a winter host.",
+    ],
+    products=[],
+    nutrition=[
+        "Feed with a balanced fertilizer (e.g. 10-10-10 NPK) at the label rate for the crop.",
+        "Mulch 5–8 cm deep to stabilize moisture and soil temperature.",
+    ],
+    prevention=[
+        "Rotate crops where applicable and sanitize tools between plants.",
+    ],
+)
+
+
+def _p(c: CarePlan, **kw) -> CarePlan:
+    """Merge helper: override only provided fields."""
+    return CarePlan(
+        actions=kw.get("actions", c.actions),
+        products=kw.get("products", c.products),
+        nutrition=kw.get("nutrition", c.nutrition),
+        prevention=kw.get("prevention", c.prevention),
+    )
+
+
+# Base plans per pathogen/pest group, then per-crop nuances on top.
+FUNGICIDE = "labeled fungicide"
+
+_PLAN_BASE: dict[str, CarePlan] = {
+    "scab": CarePlan(
+        actions=[
+            "Remove and destroy infected leaves and fruit — do not compost.",
+            "Prune the canopy to open airflow and speed leaf drying.",
+            "Rake and dispose of fallen leaves before budbreak.",
+        ],
+        products=[
+            "Myclobutanil or captan at label rates from green tip through first cover.",
+            "Copper/lime-sulfur dormant spray before budbreak to cut overwintering inoculum.",
+        ],
+        nutrition=[
+            "Balanced NPK per soil test; avoid excess nitrogen that favors soft growth.",
+        ],
+        prevention=[
+            "Plant scab-resistant cultivars where available.",
+        ],
+    ),
+    "black_rot_fruit": CarePlan(
+        actions=[
+            "Prune out mummified fruit, cankers and dead wood with clean cuts.",
+            "Remove infected fruit from the tree and the ground.",
+        ],
+        products=[
+            "Thiophanate-methyl or myclobutanil from bloom until 2–4 weeks before harvest.",
+        ],
+        nutrition=["Balanced fertilizer per soil test."],
+        prevention=["Sanitize pruning tools with 70% alcohol between trees."],
+    ),
+    "rust": CarePlan(
+        actions=[
+            "Inspect leaves weekly during wet spring periods.",
+            "Remove nearby alternate hosts (e.g. juniper/cedar) where practical.",
+        ],
+        products=[
+            "Myclobutanil or propiconazole at label rates starting at pink bud; repeat per label.",
+        ],
+        nutrition=["Balanced NPK; avoid late-season nitrogen."],
+        prevention=["Choose rust-resistant cultivars for new plantings."],
+    ),
+    "powdery_mildew": CarePlan(
+        actions=[
+            "Improve air circulation; avoid overhead irrigation.",
+            "Prune out heavily infected shoots.",
+        ],
+        products=[
+            "Sulfur or potassium bicarbonate early; myclobutanil or tebuconazole if pressure builds.",
+        ],
+        nutrition=["Avoid excess nitrogen — lush growth is more susceptible."],
+        prevention=["Space plants for airflow; water at the base."],
+    ),
+    "leaf_spot_cercospora": CarePlan(
+        actions=[
+            "Rotate crops and bury residue to reduce inoculum.",
+            "Improve drainage and avoid overhead irrigation.",
+        ],
+        products=[
+            "Azoxystrobin or propiconazole at tassel/first symptoms; follow label intervals.",
+        ],
+        nutrition=["Balanced fertility per soil test; ensure adequate potassium."],
+        prevention=["Plant resistant hybrids/cultivars."],
+    ),
+    "corn_rust": CarePlan(
+        actions=[
+            "Scout weekly from V6 through dent; note pustule density.",
+            "Residue management to lower overwintering spores.",
+        ],
+        products=[
+            "Azoxystrobin + propiconazole only under early, severe pressure.",
+        ],
+        nutrition=["Balanced NPK; avoid stress from nutrient gaps."],
+        prevention=["Use rust-resistant hybrids."],
+    ),
+    "northern_leaf_blight": CarePlan(
+        actions=[
+            "Rotate away from corn and till under infected residue.",
+            "Scout lower leaves at V10–VT.",
+        ],
+        products=[
+            "Azoxystrobin, propiconazole or pyraclostrobin at tassel if lesions reach the ear leaf.",
+        ],
+        nutrition=["Balanced fertility; fix drainage to reduce leaf wetness."],
+        prevention=["Resistant hybrids are the primary defense."],
+    ),
+    "grape_black_rot": CarePlan(
+        actions=[
+            "Remove mummies and infected canes; tighten training to speed drying.",
+            "Start protective sprays at budbreak and keep to veraison.",
+        ],
+        products=[
+            "Myclobutanil, mancozeb or captan on a 10–14 day label schedule during wet weather.",
+        ],
+        nutrition=["Balanced NPK; avoid excessive vigor."],
+        prevention=["Canopy pruning for airflow; remove wild grapes nearby."],
+    ),
+    "esca": CarePlan(
+        actions=[
+            "Prune out affected wood with clean cuts; dispose of debris.",
+            "Avoid water stress in summer; do not over-crop vines.",
+        ],
+        products=[
+            "No effective chemical cure — manage as a trunk disease; sore-shoot paints/trunk surgery per specialist.",
+        ],
+        nutrition=["Maintain balanced nutrition and even moisture."],
+        prevention=["Buy certified clean planting stock; protect pruning wounds."],
+    ),
+    "grape_leaf_blight": CarePlan(
+        actions=[
+            "Rake and destroy fallen leaves.",
+            "Open the canopy with summer pruning.",
+        ],
+        products=[
+            "Protective fungicide (mancozeb or captan) in humid spells.",
+        ],
+        nutrition=["Balanced fertility per soil test."],
+        prevention=["Improve ventilation and reduce leaf wetness duration."],
+    ),
+    "hlb": CarePlan(
+        actions=[
+            "No cure exists — remove infected trees to slow spread.",
+            "Report suspected HLB to your plant-protection authority.",
+            "Control the Asian citrus psyllid vector rigorously.",
+        ],
+        products=[
+            "Labeled psyllid insecticides (rotate modes of action) per local guidance.",
+        ],
+        nutrition=[
+            "Supplemental nutrition keeps infected trees productive longer (per citrus extension programs).",
+        ],
+        prevention=["Buy certified disease-free nursery trees only."],
+    ),
+    "bacterial_spot": CarePlan(
+        actions=[
+            "Remove visibly infected leaves/fruit; sanitize hands and tools.",
+            "Avoid overhead irrigation and working in the block when foliage is wet.",
+        ],
+        products=[
+            "Copper hydroxide (often mixed with mancozeb) at label rates; alternate with a labeled biofungicide.",
+            "Streptomycin is not registered in many regions for this use — check local labels.",
+        ],
+        nutrition=["Avoid excess nitrogen vigor; balanced fertility."],
+        prevention=["Certified disease-free seed/seedlings; 2–3 year rotation."],
+    ),
+    "potato_early_blight": CarePlan(
+        actions=[
+            "Remove infected lower leaves; avoid leaf wetness.",
+            "Rotate crops (2–3 years) and bury plant debris.",
+        ],
+        products=[
+            "Chlorothalonil or azoxystrobin when first lesions appear on lower leaves.",
+        ],
+        nutrition=[
+            "Maintain even nitrogen; keep potassium adequate — stressed plants blight sooner.",
+        ],
+        prevention=["Drip irrigate; mulch to reduce soil splash."],
+    ),
+    "late_blight": CarePlan(
+        actions=[
+            "Act immediately — this disease spreads explosively in cool, wet weather.",
+            "Destroy infected haulms (cut and bag, do not compost).",
+            "Report suspected outbreaks to agricultural authorities.",
+        ],
+        products=[
+            "Mancozeb or chlorothalonil protectants; cymoxanil or propamocarb systemics where registered.",
+        ],
+        nutrition=["Balanced fertility; avoid lush canopy from excess nitrogen."],
+        prevention=["Certified seed; destroy volunteer potatoes/tomatoes."],
+    ),
+    "leaf_scorch": CarePlan(
+        actions=[
+            "Renovate beds after harvest; remove infected runners and leaves.",
+            "Drip irrigate; avoid overhead wetting.",
+        ],
+        products=[
+            "Captan or thiram on a label schedule in humid seasons.",
+        ],
+        nutrition=["Balanced fertility; avoid drought stress."],
+        prevention=["Mulch to keep fruit and foliage off wet soil."],
+    ),
+    "leaf_mold": CarePlan(
+        actions=[
+            "Ventilate greenhouses; drop humidity below 85%.",
+            "Remove and destroy infected leaves.",
+        ],
+        products=[
+            "Chlorothalonil or a labeled leaf-mold fungicide; biofungicides (Bacillus) as protectants.",
+        ],
+        nutrition=["Balanced fertility; avoid overwatering."],
+        prevention=["Resistant cultivars; wide spacing; staking for airflow."],
+    ),
+    "septoria": CarePlan(
+        actions=[
+            "Remove infected lower leaves promptly; mulch to block soil splash.",
+            "Water at the base; avoid wetting foliage.",
+        ],
+        products=[
+            "Chlorothalonil or copper at first symptoms; repeat per label interval.",
+        ],
+        nutrition=["Balanced fertility; calcium and potassium support leaf resilience."],
+        prevention=["2-year rotation; resistant varieties."],
+    ),
+    "spider_mites": CarePlan(
+        actions=[
+            "Rinse plants with water to knock down mites and dust.",
+            "Avoid broad-spectrum insecticides that kill natural enemies.",
+        ],
+        products=[
+            "Insecticidal soap, horticultural oil or a labeled miticide (bifenthrin/abamectin where registered); rotate modes of action.",
+            "Releases of Phytoseiulus persimilis predatory mites in greenhouses.",
+        ],
+        nutrition=["Avoid drought-stressed plants — mites explode on stressed foliage."],
+        prevention=["Monitor leaf undersides weekly in hot, dry spells."],
+    ),
+    "target_spot": CarePlan(
+        actions=[
+            "Reduce humidity and leaf wetness; remove infected leaves.",
+            "Dispose of crop debris after harvest.",
+        ],
+        products=[
+            "Chlorothalonil or fluopyram/tebuconazole labeled for target spot.",
+        ],
+        nutrition=["Balanced fertility; avoid stress."],
+        prevention=["Ventilation and wide spacing; sanitize stakes/trays."],
+    ),
+    "tylcv": CarePlan(
+        actions=[
+            "Remove and destroy infected plants immediately — virus has no cure.",
+            "Install fine insect netting (50-mesh) over vents and doors.",
+            "Control whitefly vectors with yellow sticky traps plus sprays.",
+        ],
+        products=[
+            "Whitefly-targeted insecticides (imidacloprid/dinotefuran as soil drench or foliar; rotate modes of action) per label.",
+            "Horticultural oil or insecticidal soap against nymphs.",
+        ],
+        nutrition=["Keep young transplants vigorous; balanced starter fertilizer."],
+        prevention=["TYLCV-resistant hybrids; control weeds that host whiteflies."],
+    ),
+    "tomato_mosaic": CarePlan(
+        actions=[
+            "Rogue out infected plants including roots.",
+            "Disinfect hands, tools and stakes (10% bleach or 20% nonfat dry milk solution).",
+            "Control weed reservoirs around the field.",
+        ],
+        products=[
+            "No curative spray for the virus; prevent only (sanitation + resistant varieties).",
+        ],
+        nutrition=["Balanced fertility to keep plants competitive."],
+        prevention=["Buy certified virus-indexed seed/seedlings; handle plants rarely and gently."],
+    ),
+    "squash_pm": CarePlan(
+        actions=[
+            "Water at the base in the morning; improve airflow.",
+            "Prune the worst-infected leaves.",
+        ],
+        products=[
+            "Sulfur or potassium bicarbonate early; myclobutanil or horticultural oil if spreading.",
+        ],
+        nutrition=["Avoid excess nitrogen."],
+        prevention=["Powdery-mildew-tolerant varieties."],
+    ),
+}
+
+_BASE_FOR_CLASS: dict[str, str] = {
+    "Apple___Apple_scab": "scab",
+    "Apple___Black_rot": "black_rot_fruit",
+    "Apple___Cedar_apple_rust": "rust",
+    "Cherry_(including_sour)___Powdery_mildew": "powdery_mildew",
+    "Corn_(maize)___Cercospora_leaf_spot Gray_leaf_spot": "leaf_spot_cercospora",
+    "Corn_(maize)___Common_rust_": "corn_rust",
+    "Corn_(maize)___Northern_Leaf_Blight": "northern_leaf_blight",
+    "Grape___Black_rot": "grape_black_rot",
+    "Grape___Esca_(Black_Measles)": "esca",
+    "Grape___Leaf_blight_(Isariopsis_Leaf_Spot)": "grape_leaf_blight",
+    "Orange___Haunglongbing_(Citrus_greening)": "hlb",
+    "Peach___Bacterial_spot": "bacterial_spot",
+    "Pepper,_bell___Bacterial_spot": "bacterial_spot",
+    "Potato___Early_blight": "potato_early_blight",
+    "Potato___Late_blight": "late_blight",
+    "Squash___Powdery_mildew": "squash_pm",
+    "Strawberry___Leaf_scorch": "leaf_scorch",
+    "Tomato___Bacterial_spot": "bacterial_spot",
+    "Tomato___Early_blight": "potato_early_blight",  # same pathogen, same strategy
+    "Tomato___Late_blight": "late_blight",
+    "Tomato___Leaf_Mold": "leaf_mold",
+    "Tomato___Septoria_leaf_spot": "septoria",
+    "Tomato___Spider_mites Two-spotted_spider_mite": "spider_mites",
+    "Tomato___Target_Spot": "target_spot",
+    "Tomato___Tomato_Yellow_Leaf_Curl_Virus": "tylcv",
+    "Tomato___Tomato_Yellow_Leaf_Curl_Virus_": "tylcv",
+    "Tomato___Tomato_mosaic_virus": "tomato_mosaic",
+}
+
+
+def _crop_nuance(class_name: str) -> dict:
+    if class_name.startswith("Apple"):
+        return {
+            "nutrition": ["Fruit trees: feed in early spring per soil test; avoid late nitrogen."],
+        }
+    if class_name.startswith(("Tomato", "Potato")):
+        return {
+            "nutrition": [
+                "Side-dress with balanced fertilizer after first fruit set; calcium nitrate helps against blossom-end rot.",
+            ],
+        }
+    if class_name.startswith(("Pepper", "Squash")):
+        return {
+            "nutrition": [
+                "Balanced fertilizer every 2–3 weeks; avoid overwatering.",
+            ],
+        }
+    if class_name.startswith("Corn"):
+        return {
+            "nutrition": [
+                "Side-dress nitrogen at V6 and again at tassel per soil test.",
+            ],
+        }
+    if class_name.startswith("Grape"):
+        return {
+            "nutrition": [
+                "Balanced vineyard fertilizer in spring; leaf analysis is best.",
+            ],
+        }
+    if class_name.startswith("Orange"):
+        return {
+            "nutrition": [
+                "Citrus-specific fertilizer with micronutrients (Zn, Mn, Fe) 3x per year.",
+            ],
+        }
+    return {}
+
+
 # class -> {common_name, one-line description, treatment guidance}
 DISEASE_KB: dict[str, dict[str, str]] = {
     "Apple___Apple_scab": {
@@ -169,3 +545,33 @@ def kb_for(class_name: str) -> dict[str, str]:
         "description": "Class from the PlantVillage dataset.",
         "treatment": GENERIC_GUIDANCE,
     })
+
+
+def care_plan_for(class_name: str) -> dict:
+    """Structured care plan (actions / products / nutrition / prevention) for a
+    predicted class. Healthy classes get a maintenance plan; unknown classes
+    get generic honest guidance."""
+    if "healthy" in class_name:
+        plan = HEALTHY_PLAN
+    else:
+        base = _PLAN_BASE.get(_BASE_FOR_CLASS.get(class_name, ""))
+        if base is None:
+            plan = CarePlan(
+                actions=[
+                    "Confirm the diagnosis with a local agricultural extension officer or specialist.",
+                    "Remove and destroy severely infected tissue; do not compost it.",
+                ],
+                products=[],
+                nutrition=["Balanced fertilizer per soil test."],
+                prevention=["Crop rotation, sanitation and resistant varieties."],
+            )
+        else:
+            plan = _p(base, **_crop_nuance(class_name))
+    return {
+        "actions": list(plan.actions),
+        "products": list(plan.products),
+        "nutrition": list(plan.nutrition),
+        "prevention": list(plan.prevention),
+        "scope": "Static reference guidance distilled from extension literature; verify product "
+                 "registration in your region and follow the label exactly.",
+    }

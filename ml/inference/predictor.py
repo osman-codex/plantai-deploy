@@ -17,7 +17,7 @@ import torch
 import torch.nn as nn
 
 from ml.config import CONFIDENCE_THRESHOLD, DEVICE, IMG_SIZE, MODELS_DIR, TOP_K, get_device
-from ml.kb import kb_for
+from ml.kb import care_plan_for, kb_for
 
 
 class PredictionError(Exception):
@@ -72,6 +72,7 @@ class PredictionResult:
             "confidence_threshold": self.meta.get("confidence_threshold"),
             "disease_health_status": self.meta.get("disease_health_status"),
             "treatment_recommendations": self.meta.get("treatment_recommendations", []),
+            "care_plan": self.meta.get("care_plan"),
             "explainability": {"grad_cam": self.grad_cam},
             "quality_warnings": self.quality_warnings,
             "latency_ms": round(self.latency_ms, 2),
@@ -137,6 +138,7 @@ class PlantGuardPredictor:
         with torch.no_grad():
             logits = self.model(tensor)
             probs = torch.softmax(logits, dim=1)[0]
+        logits_for_cam = logits
         topv, topi = probs.topk(self.top_k)
         topv, topi = topv.tolist(), topi.tolist()
 
@@ -151,7 +153,7 @@ class PlantGuardPredictor:
         cam = None
         if accepted:
             try:
-                cam = self._grad_cam(pil, logits, topi[0])
+                cam = self._grad_cam(pil, logits_for_cam, topi[0])
             except Exception:  # pragma: no cover - best-effort explainability
                 cam = None
 
@@ -202,6 +204,7 @@ class PlantGuardPredictor:
             },
             "confidence_threshold": {"value": self.threshold, "met": accepted},
             "disease_health_status": "healthy" if healthy else ("sick" if accepted else "unknown"),
+            "care_plan": care_plan_for(primary.class_name) if accepted else None,
             "treatment_recommendations": [{
                 "disease": info["common_name"],
                 "description": info["description"],

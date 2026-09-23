@@ -7,6 +7,7 @@ explicitly unsupported - never fake numbers.
 """
 import json
 import logging
+import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,6 +16,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -35,10 +37,11 @@ except Exception as exc:  # pragma: no cover
     PlantGuardPredictor = PredictionError = None
     PredictionResult = None
 
-UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
-PLANTS_DIR = Path(__file__).resolve().parent.parent / "data" / "plants"
+UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "")) if os.getenv("UPLOAD_DIR") else Path(__file__).resolve().parent.parent / "uploads"
+PLANTS_DIR = (Path(os.getenv("DATA_DIR")) / "plants") if os.getenv("DATA_DIR") else Path(__file__).resolve().parent.parent / "data" / "plants"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 PLANTS_DIR.mkdir(parents=True, exist_ok=True)
+SPA_DIR = Path(os.getenv("SPA_DIR", "")) or (Path(__file__).resolve().parents[2] / "frontend_vite" / "dist")
 
 app = FastAPI(
     title="PlantGuard AI",
@@ -48,11 +51,15 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+# CORS: the frontend origin(s) come from CORS_ORIGINS (comma-separated, "*" ok).
+# NOTE: allow_credentials must be False when using the wildcard, otherwise
+# browsers reject the header combination and every API call fails CORS checks.
+_origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "*").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_origins=_origins or ["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -166,13 +173,21 @@ async def root():
 
 @app.get("/health")
 async def health_check() -> dict:
+    # Deliberately avoids the DB and the model here: Render health checks must
+    # respond fast and this endpoint is what the home page status chip polls.
+    return {"status": "healthy", "model": "lazy_load_on_demand", "timestamp": _now_iso()}
+
+
+@app.get("/health/deep")
+async def health_deep() -> dict:
+    """Full check: model actually loads + DB answers. Slower; use manually."""
     model_status = "not_loaded"
     if PlantGuardPredictor is not None:
         try:
             get_predictor()
             model_status = "loaded"
-        except Exception:
-            model_status = "checkpoint_missing"
+        except Exception as exc:
+            model_status = f"checkpoint_missing ({exc})"
     return {"status": "healthy", "model": model_status, "timestamp": _now_iso()}
 
 
@@ -606,3 +621,24 @@ async def model_info(db: Session = Depends(get_db)) -> dict:
 @app.on_event("startup")
 async def startup():
     logger.info("PlantGuard AI backend starting...")
+
+
+# ===== Optional single-service mode (serves the built SPA) ==================
+# If frontend_vite/dist exists (e.g. built inside the Render service), the same
+# FastAPI process serves both the API and the frontend at one URL. This kills
+# CORS/deployment-split issues entirely for simple deployments.
+
+if SPA_DIR.exists() and (SPA_DIR / "index.html").exists():
+    if (SPA_DIR / "assets").exists():
+        app.mount("/assets", StaticFiles(directory=SPA_DIR / "assets"), name="spa-assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str):
+        # API-like paths that miss should 404 as JSON, not return index.html,
+        # so the frontend never sees the "Unexpected token '<'" error again.
+        if full_path.startswith(("api/", "predict", "plants", "health", "model-info", "eval-metrics", "uploads", "data")):
+            raise HTTPException(404, "Not found")
+        candidate = (SPA_DIR / full_path).resolve()
+        if full_path and candidate.is_file() and SPA_DIR.resolve() in candidate.parents:
+            return FileResponse(candidate)
+        return FileResponse(SPA_DIR / "index.html")

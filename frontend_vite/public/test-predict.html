@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PlantGuard AI - Prediction Test</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 20px; background: #f4f7f1; color: #1c2b1a; line-height: 1.55; }
+        .container { max-width: 860px; margin: 0 auto; }
+        h1 { color: #1e3d0f; letter-spacing: -0.02em; }
+        h2 { color: #1e3d0f; font-size: 1.05rem; margin-top: 0; }
+        .card { background: white; border: 1px solid #e1e8da; border-radius: 14px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 2px rgba(28,43,26,.06), 0 4px 14px rgba(28,43,26,.07); }
+        .btn { background: #2d5016; color: white; border: none; padding: 10px 20px; border-radius: 10px; cursor: pointer; font-weight: 700; }
+        .btn:hover:enabled { background: #3a6b1c; }
+        .btn:disabled { opacity: 0.5; cursor: wait; }
+        .file-drop { border: 2px dashed #4a7c23; border-radius: 14px; padding: 30px; text-align: center; cursor: pointer; background: #fbfdf9; color: #2d5016; font-weight: 600; }
+        .file-drop:hover { background: #f2f7ec; }
+        .result { margin-top: 20px; }
+        .prediction { font-size: 1.3em; font-weight: 800; color: #1e3d0f; }
+        .confidence { font-size: 1.4em; color: #3a6b1c; font-weight: 800; }
+        .warn { background: #fdf3d1; border: 1px solid #e0c76a; padding: 15px; border-radius: 10px; margin: 10px 0; }
+        .error { background: #fde8e8; border: 1px solid #e0a0a0; padding: 15px; border-radius: 10px; margin: 10px 0; color: #b33a3a; }
+        .metric { font-size: 0.88em; color: #5f6f5a; margin-top: 5px; }
+        .bar { display: grid; grid-template-columns: 240px 1fr 60px; gap: 10px; align-items: center; margin: 6px 0; font-size: 0.9em; }
+        .bar-track { height: 8px; background: #e5efe0; border-radius: 999px; overflow: hidden; }
+        .bar-fill { height: 100%; background: linear-gradient(90deg, #4a7c23, #2d5016); border-radius: 999px; }
+        .bar-value { text-align: right; color: #5f6f5a; font-variant-numeric: tabular-nums; }
+        img.preview { max-width: 100%; border-radius: 10px; margin-top: 10px; display: block; }
+        .disclaimer { background: #e5efe0; border-left: 4px solid #2d5016; padding: 15px; margin-top: 20px; border-radius: 0 10px 10px 0; font-size: 0.92em; }
+        .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        @media (max-width: 640px) { .grid2 { grid-template-columns: 1fr; } }
+        figure { margin: 0; }
+        figcaption { font-size: 0.8em; color: #5f6f5a; text-align: center; margin-top: 4px; }
+        .verdict { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; background: linear-gradient(135deg, #f3f8ec, #e9f2df); border: 1px solid #e1e8da; border-radius: 12px; padding: 14px 16px; margin: 12px 0; }
+        .badge { display: inline-block; background: #e5efe0; color: #2d5016; border-radius: 999px; padding: 0.2rem 0.7rem; font-size: 0.8rem; font-weight: 700; }
+        .badge.warn { background: #fdf3d1; color: #7a5f00; }
+        /* mini progress chart */
+        .chart { margin-top: 8px; }
+        .chart svg { width: 100%; height: auto; display: block; }
+        .gridline { stroke: #e1e8da; stroke-width: 1; }
+        .chart-line { fill: none; stroke: #3a6b1c; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+        .chart-area { fill: rgba(74,124,35,.12); }
+        .pt-ok { fill: #3f9c4e; stroke: #fff; stroke-width: 1.5; }
+        .pt-bad { fill: #c0392b; stroke: #fff; stroke-width: 1.5; }
+        .tick { fill: #5f6f5a; font-size: 10px; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-top: 12px; }
+        .stat { background: #fbfdf9; border: 1px solid #e1e8da; border-radius: 10px; padding: 8px 12px; }
+        .stat b { display: block; font-size: 1.1rem; color: #1e3d0f; }
+        .stat span { font-size: 0.72rem; color: #5f6f5a; text-transform: uppercase; letter-spacing: .05em; }
+        .spinner { width: 18px; height: 18px; border: 3px solid #e5efe0; border-top-color: #2d5016; border-radius: 50%; animation: spin 0.9s linear infinite; display: inline-block; vertical-align: -4px; margin-right: 8px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        a { color: #2d5016; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌿 PlantGuard AI — Prediction Test</h1>
+        <p class="metric">Testing harness for the real model trained on PlantVillage (38 classes).
+           The user-facing app is at <a href="http://localhost:5173">localhost:5173</a>.</p>
+
+        <div class="card">
+            <h2>1 · Diagnostic run</h2>
+            <div class="file-drop" onclick="document.getElementById('file-input').click()">
+                <input type="file" id="file-input" accept="image/*" style="display: none" onchange="handleFile(this.files[0])">
+                <div id="drop-text">
+                    <p style="font-size: 1.1em; color: #2d5016; margin: 0;">Click to select an image</p>
+                    <p class="metric" style="margin: 4px 0 0;">or drag and drop (JPG, PNG, WebP)</p>
+                </div>
+            </div>
+            <div id="preview-area" style="display: none; margin-top: 15px;">
+                <div class="grid2">
+                    <figure>
+                        <img id="preview" class="preview" alt="Preview">
+                        <figcaption id="file-name"></figcaption>
+                    </figure>
+                    <figure id="gradcam-figure" style="display:none;">
+                        <img id="gradcam" class="preview" alt="Grad-CAM overlay">
+                        <figcaption>Model attention (Grad-CAM)</figcaption>
+                    </figure>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <button id="analyze-btn" class="btn" onclick="analyze()" disabled>Analyze Plant Health</button>
+            <p class="metric" id="api-status">Checking API connection...</p>
+        </div>
+
+        <div id="result-area" class="result" style="display: none;">
+            <div class="card">
+                <h2>Diagnosis result</h2>
+                <div id="result-content"></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>2 · Simulated plant progress (from observation history)</h2>
+            <p class="metric">Demo chart built from a sample observation sequence — the real per-plant
+               progress graph is in the app's <a href="http://localhost:5173">Monitor page</a>.</p>
+            <div id="progress-demo" class="chart"></div>
+        </div>
+
+        <div class="disclaimer">
+            <strong>⚠️ Important Disclaimer:</strong> This AI-assisted visual assessment is for informational purposes only.
+            It is not a substitute for laboratory diagnosis, soil testing, or professional plant pathology advice.
+            Always verify with a qualified specialist before taking action.
+        </div>
+    </div>
+
+    <script>
+        let selectedFile = null;
+
+        fetch('http://localhost:8000/health')
+            .then(r => r.json())
+            .then(h => {
+                document.getElementById('api-status').textContent = `Backend: ${h.status} · Model: ${h.model}`;
+            })
+            .catch(() => {
+                document.getElementById('api-status').textContent = 'API connection failed — is the backend running on :8000?';
+            });
+
+        function handleFile(file) {
+            if (!file) return;
+            selectedFile = file;
+            const preview = document.getElementById('preview');
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                preview.src = e.target.result;
+                document.getElementById('preview-area').style.display = 'block';
+                document.getElementById('file-name').textContent = file.name;
+                document.getElementById('analyze-btn').disabled = false;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        async function analyze() {
+            if (!selectedFile) return;
+            const btn = document.getElementById('analyze-btn');
+            const resultArea = document.getElementById('result-area');
+            const resultContent = document.getElementById('result-content');
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span>Analyzing...';
+            resultArea.style.display = 'none';
+
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+
+            try {
+                const resp = await fetch('http://localhost:8000/predict', { method: 'POST', body: formData });
+                if (!resp.ok) {
+                    const err = await resp.json().catch(() => ({}));
+                    throw new Error(err.detail || 'Prediction failed');
+                }
+                displayResult(await resp.json());
+            } catch (err) {
+                resultContent.innerHTML = `<div class="error"><strong>Error:</strong> ${err.message}</div>`;
+                resultArea.style.display = 'block';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Analyze Plant Health';
+            }
+        }
+
+        function displayResult(data) {
+            const pred = data.prediction;
+            const resultContent = document.getElementById('result-content');
+            const resultArea = document.getElementById('result-area');
+            let html = `<p class="metric">Model: ${pred.model_version} · Latency: ${pred.latency_ms.toFixed(0)} ms</p>`;
+
+            // Grad-CAM side by side with preview
+            const overlay = pred.explainability?.grad_cam?.overlay;
+            if (overlay) {
+                document.getElementById('gradcam').src = overlay;
+                document.getElementById('gradcam-figure').style.display = 'block';
+            } else {
+                document.getElementById('gradcam-figure').style.display = 'none';
+            }
+
+            if (pred.accepted) {
+                html += `
+                    <div class="verdict">
+                        <div><span class="metric">Diagnosis</span><div class="prediction">${pred.diagnosis.disease}</div></div>
+                        <div><span class="metric">Confidence</span><div class="confidence">${(pred.diagnosis.confidence * 100).toFixed(1)}%</div></div>
+                        <div><span class="metric">Health</span><span class="badge">${pred.disease_health_status}</span></div>
+                    </div>`;
+                if (pred.matches && pred.matches.length > 1) {
+                    html += `<h2>Other possible matches</h2>`;
+                    for (const m of pred.matches.slice(1, 5)) {
+                        html += `
+                            <div class="bar">
+                                <span>${m.display_name}</span>
+                                <div class="bar-track"><div class="bar-fill" style="width: ${m.confidence * 100}%"></div></div>
+                                <span class="bar-value">${(m.confidence * 100).toFixed(1)}%</span>
+                            </div>`;
+                    }
+                }
+                if (pred.treatment_recommendations && pred.treatment_recommendations.length > 0) {
+                    html += `<h2>Reference guidance</h2>`;
+                    for (const t of pred.treatment_recommendations) {
+                        html += `
+                            <div class="card" style="margin: 10px 0; background:#fbfdf9;">
+                                <strong>${t.disease}</strong>
+                                <p style="margin: 5px 0; color: #5c5c5c;">${t.description}</p>
+                                <p style="margin: 5px 0; color: #2d5016; font-weight:600;">${t.guidance}</p>
+                                <p class="metric">${t.scope}</p>
+                            </div>`;
+                    }
+                }
+            } else {
+                html += `
+                    <div class="warn">
+                        <strong>Insufficient confidence for a reliable prediction.</strong><br>
+                        ${pred.reason}
+                    </div>`;
+            }
+
+            if (pred.quality_warnings && pred.quality_warnings.length > 0) {
+                html += `<div class="warn"><strong>Image quality notes:</strong><br>${pred.quality_warnings.join('<br>')}</div>`;
+            }
+            if (pred.grad_cam?.available) {
+                html += `<p class="metric">Model focused on ${(pred.grad_cam.high_attention_fraction_0_4 * 100).toFixed(1)}% of the image at high attention (threshold 0.4).</p>`;
+            }
+            html += `<p class="metric">${data.disclaimer}</p>`;
+            resultContent.innerHTML = html;
+            resultArea.style.display = 'block';
+        }
+
+        // ===== Mini progress chart (sample data — real chart lives in the app) =====
+        (function renderProgressDemo() {
+            const sample = [
+                { n: 1, conf: 0.72, healthy: false },
+                { n: 2, conf: 0.81, healthy: false },
+                { n: 3, conf: 0.77, healthy: true },
+                { n: 4, conf: 0.86, healthy: true },
+                { n: 5, conf: 0.91, healthy: true },
+            ];
+            const W = 640, H = 200, L = 44, R = 16, T = 16, B = 30;
+            const lo = 0.6, hi = 1.0;
+            const x = i => L + (i * (W - L - R)) / (sample.length - 1);
+            const y = v => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+            const pts = sample.map((s, i) => ({ ...s, px: x(i), py: y(s.conf) }));
+            const path = pts.map((p, i) => `${i ? 'L' : 'M'}${p.px.toFixed(1)},${p.py.toFixed(1)}`).join(' ');
+            const area = `${path} L${pts[pts.length - 1].px},${H - B} L${pts[0].px},${H - B} Z`;
+            let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="sample confidence trend">`;
+            for (const t of [0, 0.25, 0.5, 0.75, 1]) {
+                const v = lo + t * (hi - lo), yy = y(v);
+                svg += `<line class="gridline" x1="${L}" y1="${yy}" x2="${W - R}" y2="${yy}"/><text class="tick" x="${L - 6}" y="${yy + 3}" text-anchor="end">${Math.round(v * 100)}%</text>`;
+            }
+            svg += `<path class="chart-area" d="${area}"/><path class="chart-line" d="${path}"/>`;
+            for (const p of pts) {
+                svg += `<circle class="${p.healthy ? 'pt-ok' : 'pt-bad'}" cx="${p.px}" cy="${p.py}" r="4.5"/><text class="tick" x="${p.px}" y="${H - B + 16}" text-anchor="middle">#${p.n}</text>`;
+            }
+            svg += '</svg>';
+            const mean = sample.reduce((s, p) => s + p.conf, 0) / sample.length;
+            document.getElementById('progress-demo').innerHTML = `
+                ${svg}
+                <div class="stats">
+                    <div class="stat"><b>${sample.length}</b><span>observations</span></div>
+                    <div class="stat"><b>${sample.filter(p => p.healthy).length}</b><span>healthy checks</span></div>
+                    <div class="stat"><b>${(mean * 100).toFixed(0)}%</b><span>mean confidence</span></div>
+                    <div class="stat"><b>▲</b><span>confidence trend</span></div>
+                </div>`;
+        })();
+    </script>
+</body>
+</html>

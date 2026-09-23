@@ -6,3 +6,6 @@ __pycache__/
 *.pyc
 *.db
 tmp_data/
+*.bundle
+backend/app/uploads/
+backend/data/

@@ -1,0 +1,1 @@
+# PlantGuard AI Schemas
